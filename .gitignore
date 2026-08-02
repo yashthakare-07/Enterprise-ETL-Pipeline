@@ -1,11 +1,13 @@
-# Local Terraform directories and files
+# Terraform
 .terraform/
+*.terraform*
 *.tfstate
 *.tfstate.*
 crash.log
-*.tfplan
-.tfstate.d/
 
-# Python cache
+# Lambda build artifacts
+*.zip
+
+# Python
 __pycache__/
 *.pyc
