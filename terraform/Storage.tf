@@ -60,6 +60,7 @@ resource "aws_s3_bucket_notification" "bucket_notification" {
 
   depends_on = [aws_sqs_queue_policy.s3_to_sqs_policy]
 }
+
 # 7. Athena Query Results Bucket
 resource "aws_s3_bucket" "athena_results" {
   bucket = "enterprise-etl-athena-results-${random_id.bucket_suffix.hex}"

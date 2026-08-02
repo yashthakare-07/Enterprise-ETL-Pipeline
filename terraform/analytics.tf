@@ -38,7 +38,6 @@ resource "aws_glue_catalog_table" "telemetry_table" {
       serialization_library = "org.openx.data.jsonserde.JsonSerDe"
     }
 
-    # Match your Pydantic schema columns for SQL querying
     columns {
       name = "record_id"
       type = "string"
