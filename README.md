@@ -156,7 +156,6 @@ git clone https://github.com/yashthakare-07/enterprise-etl-pipeline.git
 cd enterprise-etl-pipeline/terraform
 ```
 
-> **TODO:** Information pending — the manual, one-time bootstrap procedure for creating the Terraform state backend bucket (referenced in `main.tf` as a prerequisite) has not yet been provided.
 
 Initialize Terraform against the remote backend:
 
@@ -306,8 +305,6 @@ Expected output for `terraform validate`:
 ```
 Success! The configuration is valid.
 ```
-
-> **TODO:** Information pending — no unit tests, integration tests, or a testing framework (e.g., `pytest`, `moto`) have been provided for `main.py`. End-to-end verification (uploading `sample_telemetry.json` and confirming a corresponding DynamoDB item) has not yet been documented with evidence.
 
 ## Logs and Monitoring
 
