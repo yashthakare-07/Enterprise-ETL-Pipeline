@@ -1,0 +1,16 @@
+[
+  {
+    "record_id": "REC-001",
+    "timestamp": "2026-08-02T12:00:00Z",
+    "device_id": "sensor_alpha_01",
+    "sensor_value": 45.67,
+    "status": "active"
+  },
+  {
+    "record_id": "REC-002",
+    "timestamp": "2026-08-02T12:05:00Z",
+    "device_id": "sensor_beta_02",
+    "sensor_value": 99.12,
+    "status": "warning"
+  }
+]
