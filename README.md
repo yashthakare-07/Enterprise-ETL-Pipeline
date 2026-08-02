@@ -202,7 +202,6 @@ Alternatively, push to the `main` branch to let the GitHub Actions workflow run 
 
 > Do not commit AWS credentials, account IDs, or bucket names containing sensitive identifiers to the repository. Use GitHub Actions secrets and Terraform variables/placeholders instead.
 
-**Terraform variables:** TODO: Information pending — no `variables.tf` has been provided; region (`us-east-1`) and naming are currently hardcoded in `main.tf`.
 
 ## Usage
 
