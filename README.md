@@ -1,16 +1,33 @@
-# Enterprise ETL Pipeline
+# Serverless Telemetry Ingestion Pipeline with Dual-Path Analytics
 
 [![Terraform CI/CD](https://github.com/yashthakare-07/enterprise-etl-pipeline/actions/workflows/deploy.yml/badge.svg)](https://github.com/yashthakare-07/enterprise-etl-pipeline/actions/workflows/deploy.yml)
 ![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.0-844FBA?logo=terraform&logoColor=white)
 ![AWS](https://img.shields.io/badge/AWS-Lambda%20%7C%20S3%20%7C%20SQS%20%7C%20DynamoDB%20%7C%20Glue%20%7C%20Athena-FF9900?logo=amazonaws&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 
-A serverless, event-driven ETL pipeline on AWS that ingests JSON telemetry files, validates and transforms them, persists them to DynamoDB, and exposes the raw data for ad hoc SQL analysis via Athena — all provisioned through Terraform and deployed through GitHub Actions.
+Serverless telemetry pipeline on AWS (S3 → SQS → Lambda → DynamoDB)
+with an independent Athena/Glue path for ad hoc SQL analysis.
+Provisioned via Terraform, deployed via GitHub Actions. Built to
+learn event-driven architecture patterns — not a production system.
+
+## Known Limitations
+
+> This is a learning/portfolio project, not a hardened production deployment.
+> It has not been load-tested and has not run against real production traffic.
+> The gaps below are known, not overlooked — full detail and reasoning for
+> each is in [Production Readiness Gaps](#production-readiness-gaps).
+>
+> - **State files (`terraform.tfstate`, `.tfstate.backup`) are currently committed to git**, despite a remote S3 backend being configured. This is inconsistent and is the top item to fix.
+> - **No automated test suite.** The [Testing](#testing) section covers local lint/validate checks only — there is no `pytest`/`moto` coverage of the Lambda handler.
+> - **The S3 event trigger and the Athena table are not prefix-aligned** (see [Project Architecture](#project-architecture)), so the processing path and the analytics path are not guaranteed to see identical objects.
+> - **Encryption is not explicitly configured** for S3 or DynamoDB beyond AWS defaults, and CI/CD to AWS auth uses static IAM keys rather than OIDC.
+> - **No monitoring/alerting** — no CloudWatch Alarms or SNS notifications on Lambda errors, DLQ depth, or failed deploys.
 
 ---
 
 ## Table of Contents
 
+- [Known Limitations](#known-limitations)
 - [Project Overview](#project-overview)
 - [Features](#features)
 - [Project Architecture](#project-architecture)
@@ -23,25 +40,37 @@ A serverless, event-driven ETL pipeline on AWS that ingests JSON telemetry files
 - [CI/CD Pipeline](#cicd-pipeline)
 - [Infrastructure](#infrastructure)
 - [Execution Flow](#execution-flow)
-- [Screenshots](#screenshots)
 - [Testing](#testing)
 - [Logs and Monitoring](#logs-and-monitoring)
 - [Troubleshooting](#troubleshooting)
 - [Security](#security)
 - [Performance Considerations](#performance-considerations)
-- [Future Improvements](#future-improvements)
-- [License](#license)
+- [Production Readiness Gaps](#production-readiness-gaps)
 - [Author](#author)
 
 ---
 
 ## Project Overview
 
-This project implements a telemetry ingestion pipeline intended for scenarios where devices or services periodically drop JSON telemetry files into object storage and that data needs to be reliably validated, persisted, and made queryable without standing up a database server or a always-on processing service.
+This project is a serverless, event-driven pipeline for ingesting JSON
+telemetry files on AWS. It was built to understand and demonstrate a
+common but non-trivial pattern: decoupling ingestion from processing
+using a queue, validating data at the boundary before it's trusted,
+and exposing the same raw data through two independent paths — a
+low-latency structured store for point lookups, and an ad hoc SQL
+surface for analysis — without either path depending on the other.
 
-A JSON file uploaded to an S3 bucket triggers an event notification, which is queued in SQS rather than invoking compute directly — this decouples ingestion bursts from processing capacity and provides built-in retry and dead-letter handling. A Lambda function consumes the queue, validates each record against a strict schema, normalizes it, and writes it to DynamoDB. Independently, the same raw files are exposed to Amazon Athena through a Glue Catalog table, so raw data can be queried with SQL without waiting on the processing path.
+Files land in an S3 bucket, which triggers an SQS-buffered Lambda that
+validates each record against a strict schema and writes valid ones to
+DynamoDB. Independently, the same raw files are queryable through
+Athena via a Glue Catalog table, so the analytical path never waits on
+the processing path.
 
-The target users are teams that need a small, event-driven, serverless data pipeline — for example, IoT/sensor telemetry, application event logs, or batch exports from another system — where writes are moderate in volume, records need schema validation before being trusted, and both a low-latency structured store (DynamoDB) and an ad hoc analytical query surface (Athena) are useful.
+This is a learning/portfolio project, scoped for low-to-moderate
+volume, single-region use. It's best understood as a working
+demonstration of the pattern rather than a hardened system — see
+[Production Readiness Gaps](#production-readiness-gaps) for exactly
+what's missing and why.
 
 ## Features
 
@@ -82,7 +111,7 @@ graph TD
     end
 ```
 
-The processing path (S3 → SQS → Lambda → DynamoDB) and the analytics path (S3 → Glue → Athena) are independent of each other; both read from the same S3 bucket, but the Athena table is scoped to a `raw/` key prefix while the S3 event notification that drives Lambda processing is **not** prefix-scoped, so the two paths are not guaranteed to see identical sets of objects.
+The processing path (S3 → SQS → Lambda → DynamoDB) and the analytics path (S3 → Glue → Athena) are independent of each other; both read from the same S3 bucket, but the Athena table is scoped to a `raw/` key prefix while the S3 event notification that drives Lambda processing is **not** prefix-scoped, so the two paths are not guaranteed to see identical sets of objects. This is a known gap — tracked in [Production Readiness Gaps](#production-readiness-gaps).
 
 ## Folder Structure
 
@@ -109,8 +138,8 @@ enterprise-etl-pipeline/
 │   ├── analytics.tf               # Glue Catalog database/table, Athena workgroup
 │   ├── output.tf                  # Terraform outputs (bucket/table names)
 │   ├── etl_processor.zip          # Lambda build artifact (regenerated on every apply)
-│   ├── terraform.tfstate          # TODO: should not be version-controlled once remote backend is in use
-│   └── terraform.tfstate.backup   # TODO: should not be version-controlled
+│   ├── terraform.tfstate          # Known limitation: still committed despite remote backend — see Known Limitations
+│   └── terraform.tfstate.backup   # Known limitation: still committed despite remote backend — see Known Limitations
 ├── sample_telemetry.json          # Example payload matching the expected schema
 ├── .gitignore
 └── README.md
@@ -156,7 +185,6 @@ git clone https://github.com/yashthakare-07/enterprise-etl-pipeline.git
 cd enterprise-etl-pipeline/terraform
 ```
 
-
 Initialize Terraform against the remote backend:
 
 ```bash
@@ -201,7 +229,6 @@ Alternatively, push to the `main` branch to let the GitHub Actions workflow run 
 | `AWS_SECRET_ACCESS_KEY` | AWS authentication for Terraform runs in CI |
 
 > Do not commit AWS credentials, account IDs, or bucket names containing sensitive identifiers to the repository. Use GitHub Actions secrets and Terraform variables/placeholders instead.
-
 
 ## Usage
 
@@ -253,9 +280,7 @@ Defined in `.github/workflows/deploy.yml`, named **Enterprise ETL Terraform CI/C
 
 **Artifact generation:** the `tfplan` file is generated in the plan step and consumed directly by the apply step within the same job run; it is not currently uploaded as a persisted GitHub Actions artifact.
 
-**Rollback:** TODO: Information pending — no rollback or failure-notification step is defined in the current workflow.
-
-**AWS authentication:** static IAM user access key/secret pair stored as GitHub Actions secrets. TODO: Information pending — no OIDC/role-assumption configuration has been provided; this may be worth adopting to avoid long-lived credentials.
+**Rollback and authentication:** there is no rollback or failure-notification step, and AWS authentication uses a static IAM user access key/secret pair rather than OIDC role assumption. Both are tracked in [Production Readiness Gaps](#production-readiness-gaps).
 
 ## Infrastructure
 
@@ -286,11 +311,11 @@ Defined in `.github/workflows/deploy.yml`, named **Enterprise ETL Terraform CI/C
 7. Any message that fails processing is reported back to Lambda via `batchItemFailures`, so only that message is retried (up to 3 times) before landing in the dead letter queue.
 8. Independently of steps 3–7, the same raw JSON files under the `raw/` prefix are queryable through Athena via the Glue Catalog table, without waiting for Lambda processing.
 
-
+Note: SQS provides at-least-once delivery, so a message can in principle be delivered more than once. Behavior of this pipeline under duplicate delivery has not been explicitly tested or documented — see [Production Readiness Gaps](#production-readiness-gaps).
 
 ## Testing
 
-**Pre-commit validation performed locally:**
+**No automated test suite exists yet.** The checks below are local lint/validation checks run before committing, not unit or integration tests, and they do not exercise the Lambda handler's actual logic against mocked AWS services.
 
 ```bash
 python -m py_compile terraform/src/main.py   # Syntax check of the Lambda handler
@@ -305,13 +330,15 @@ Expected output for `terraform validate`:
 Success! The configuration is valid.
 ```
 
+End-to-end verification (uploading `sample_telemetry.json` and confirming a corresponding DynamoDB item) has been done manually during development but is not currently captured as evidence (logs/screenshots) in this repository.
+
 ## Logs and Monitoring
 
 **CloudWatch Logs:** each Lambda function version writes to its own log group under `/aws/lambda/<function-name>`. The currently deployed function's log group has no explicit retention policy configured, meaning logs are retained indefinitely by default.
 
 **GitHub Actions logs:** each workflow run's `init`, `validate`, `plan`, and `apply` output is available under the Actions tab for the repository, per run.
 
-**Alerts / Metrics:** TODO: Information pending — no CloudWatch Alarms, SNS notifications, or custom metrics have been configured in the provided Terraform files.
+**Alerts / Metrics:** none configured. No CloudWatch Alarms, SNS notifications, or custom metrics currently exist — see [Production Readiness Gaps](#production-readiness-gaps).
 
 ## Troubleshooting
 
@@ -322,14 +349,14 @@ Success! The configuration is valid.
 | CI job runs `terraform` commands against the wrong directory | GitHub Actions runner's default working directory did not match the repository's `terraform/` subfolder | Set `working-directory: ./terraform` on each Terraform step in `deploy.yml` (implemented) |
 | Lambda import errors for `pydantic` at runtime | AWS Lambda's Python 3.12 managed runtime does not include third-party packages | Vendor the dependency (and its transitive dependencies) directly into `terraform/src`, which is zipped into the deployment package by the `archive_file` data source |
 
-> Additional issues encountered during development that are not yet documented here should be added as they are identified.
+> Note: the remote backend fix above (row 1) addressed *new* state going forward, but the local state files generated before that fix are still tracked in git — see [Known Limitations](#known-limitations).
 
 ## Security
 
 - **IAM:** the Lambda execution role uses a single inline policy scoped to the specific S3 bucket, DynamoDB table, and SQS queue the function interacts with, rather than a broad managed policy.
 - **Secrets management:** AWS credentials for CI/CD are stored as GitHub Actions repository secrets and are never written into the codebase.
-- **Authentication (CI to AWS):** currently uses a static IAM user access key/secret pair. TODO: consider migrating to OIDC-based role assumption to avoid long-lived credentials.
-- **Encryption:** TODO: Information pending — the provided Terraform configuration does not explicitly enable S3 server-side encryption, S3 bucket versioning, or DynamoDB encryption settings beyond AWS defaults; these should be reviewed and explicitly configured rather than assumed.
+- **Authentication (CI to AWS):** currently uses a static IAM user access key/secret pair, not OIDC-based role assumption — see [Production Readiness Gaps](#production-readiness-gaps).
+- **Encryption:** S3 server-side encryption, S3 bucket versioning, and DynamoDB encryption are not explicitly configured beyond AWS defaults — see [Production Readiness Gaps](#production-readiness-gaps).
 - **Data validation:** all inbound records are validated against a strict schema before being persisted, reducing the risk of malformed or unexpected data reaching DynamoDB.
 
 ## Performance Considerations
@@ -337,29 +364,32 @@ Success! The configuration is valid.
 - **Cold starts:** the Lambda function is configured with 256 MB of memory and a 60-second timeout; no provisioned concurrency is configured, so cold starts are possible under infrequent invocation patterns.
 - **Batching:** the SQS event source mapping uses a batch size of 10, balancing per-invocation overhead against processing latency.
 - **Scalability:** DynamoDB uses on-demand (`PAY_PER_REQUEST`) billing, which scales automatically with load without capacity planning; SQS absorbs upload bursts so Lambda concurrency scales independently of ingestion rate.
-- **Cost optimization:** on-demand DynamoDB and serverless Lambda avoid idle-capacity cost, but the currently orphaned S3 buckets and DynamoDB tables from earlier, state-less deployments represent unnecessary ongoing cost until manually cleaned up.
+- **Cost optimization:** on-demand DynamoDB and serverless Lambda avoid idle-capacity cost, but orphaned S3 buckets and DynamoDB tables from earlier, state-less deployments (see Troubleshooting) represent unnecessary ongoing cost until manually cleaned up.
 - **Terraform efficiency:** a single shared S3 backend with native locking avoids redundant resource creation across concurrent or repeated CI runs.
 
-## Future Improvements
+## Production Readiness Gaps
 
-- Migrate GitHub Actions AWS authentication from static IAM user keys to OIDC-based role assumption
-- Explicitly configure S3 server-side encryption and versioning, and DynamoDB encryption at rest
-- Move vendored Python dependencies (`pydantic` and related packages) into a dedicated Lambda Layer instead of bundling them with the function source
-- Scope the S3 event notification to the `raw/` prefix so the ingestion trigger and the Athena-queried location are guaranteed to match
-- Add an automated test suite (e.g., `pytest` with `moto` for mocked AWS services) for `main.py`
-- Add CloudWatch Alarms and SNS notifications for Lambda errors, DLQ depth, and failed CI/CD runs
-- Remove `terraform.tfstate`, `terraform.tfstate.backup`, and the committed `etl_processor.zip` from version control
-- Parameterize the Terraform configuration with input variables (region, environment, naming) instead of hardcoded values
-- Multi-region deployment support
-- CI workflow step to upload the Terraform plan as a GitHub Actions artifact for auditability
+This project is a working demonstration of an event-driven pipeline pattern, not a production-hardened system. These are the concrete gaps between what exists today and what production use would require, roughly ordered by priority:
 
-
+1. **Remove committed state files** — `terraform.tfstate`, `terraform.tfstate.backup`, and the built `etl_processor.zip` are currently tracked in git even though a remote S3 backend is configured. This is an inconsistency and the highest-priority cleanup.
+2. **Align the S3 trigger and Athena scope** — scope the S3 event notification to the `raw/` prefix so the Lambda-processing path and the Athena-queried path are guaranteed to see the same set of objects.
+3. **Add an automated test suite** — no unit or integration tests exist for `main.py`; `pytest` with `moto` (mocked AWS services) would cover schema validation, batch-write behavior, and partial-failure handling.
+4. **Verify idempotency under duplicate SQS delivery** — SQS provides at-least-once delivery by design; current behavior under redelivery is undocumented and untested.
+5. **Explicitly configure encryption** — S3 server-side encryption and versioning, and DynamoDB encryption at rest, are not explicitly set beyond AWS defaults.
+6. **Migrate to OIDC-based CI authentication** — replace the static IAM user access key/secret pair with GitHub Actions OIDC role assumption.
+7. **Add monitoring and alerting** — CloudWatch Alarms and SNS notifications for Lambda errors, DLQ depth, and failed CI/CD runs.
+8. **Add a rollback / failure-notification step** to the CI/CD workflow.
+9. **Move vendored dependencies into a Lambda Layer** instead of bundling `pydantic` and related packages directly with the function source.
+10. **Parameterize Terraform** with input variables (region, environment, naming) instead of hardcoded values.
+11. **Persist the Terraform plan as a GitHub Actions artifact** for auditability between the plan and apply steps.
+12. **Multi-region deployment support.**
 
 ## Author
+
 **Name:** Yash Thakare
 
 **Designation:** Student
 
 **GitHub:** [@yashthakare-07](https://github.com/yashthakare-07)
 
-**LinkedIn**:https://www.linkedin.com/in/yashthakare1711
+**LinkedIn:** https://www.linkedin.com/in/yashthakare1711
