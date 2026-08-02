@@ -1,0 +1,11 @@
+# Local Terraform directories and files
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfplan
+.tfstate.d/
+
+# Python cache
+__pycache__/
+*.pyc
