@@ -1,7 +1,7 @@
 # 1. DynamoDB Table for Processed Telemetry
 resource "aws_dynamodb_table" "etl_table" {
-  name         = "EnterpriseETLRecords"
-  billing_mode = "PAY_PER_REQUEST" # Serverless on-demand pricing (Free Tier eligible)
+  name         = "EnterpriseETLRecords_${random_id.bucket_suffix.hex}"
+  billing_mode = "PAY_PER_REQUEST"
   hash_key     = "record_id"
   range_key    = "timestamp"
 

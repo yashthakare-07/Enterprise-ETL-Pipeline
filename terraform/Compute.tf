@@ -1,6 +1,6 @@
 # 1. IAM Role for Lambda
 resource "aws_iam_role" "etl_lambda_role" {
-  name = "enterprise_etl_lambda_role"
+  name = "enterprise_etl_lambda_role_${random_id.bucket_suffix.hex}"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -36,11 +36,12 @@ resource "aws_iam_role_policy" "etl_lambda_policy" {
       {
         Effect = "Allow"
         Action = [
-          "sqs:ReceiveMessage",
-          "sqs:DeleteMessage",
-          "sqs:GetQueueAttributes"
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem",
+          "dynamodb:GetItem",
+          "dynamodb:BatchWriteItem" # <-- Add this permission
         ]
-        Resource = aws_sqs_queue.main_queue.arn
+        Resource = aws_dynamodb_table.etl_table.arn
       },
       {
         Effect = "Allow"

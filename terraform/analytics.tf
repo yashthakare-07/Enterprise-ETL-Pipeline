@@ -1,11 +1,11 @@
 # 1. Athena Database for the Data Lake with a unique logical name
 resource "aws_glue_catalog_database" "etl_analytics_db" {
-  name = "enterprise_etl_catalog_v2"
+  name = "enterprise_etl_catalog_${random_id.bucket_suffix.hex}"
 }
 
 # 2. Athena Workgroup for query execution results
 resource "aws_athena_workgroup" "etl_workgroup" {
-  name = "enterprise_etl_workgroup"
+  name = "enterprise_etl_workgroup_${random_id.bucket_suffix.hex}"
 
   configuration {
     result_configuration {
